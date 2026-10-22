@@ -44,6 +44,41 @@ class TestOperators:
         assert compared_paths == ["root['a']"]
         assert result == {'equal_lists': {"root['a']": {}}}
 
+    @pytest.mark.parametrize('include_path', ['root[0]', 'root[0][0]'])
+    @pytest.mark.parametrize('prevent_default', [False, True])
+    def test_custom_operator_skips_paths_outside_included_subtree(self, include_path, prevent_default):
+        matched_paths = []
+        compared_paths = []
+
+        class CustomClass:
+            def __init__(self, value):
+                self.value = value
+
+        class RecordingOperator(BaseOperator):
+            def match(self, level):
+                matched_paths.append(level.path())
+                return super().match(level)
+
+            def give_up_diffing(self, level, diff_instance):
+                compared_paths.append(level.path())
+                if level.t1.value == level.t2.value:
+                    diff_instance.custom_report_result('equal_values', level, {})
+                return prevent_default
+
+        shared = CustomClass(1)
+        t1 = [[shared], CustomClass(2)]
+        t2 = [[shared], CustomClass(3)]
+
+        result = DeepDiff(
+            t1, t2,
+            include_paths=[include_path],
+            custom_operators=[RecordingOperator(types=[CustomClass])],
+        )
+
+        assert matched_paths == ['root', 'root[0]', 'root[0][0]']
+        assert compared_paths == ['root[0][0]']
+        assert result == {'equal_values': {'root[0][0]': {}}}
+
     @pytest.mark.parametrize('exclude_options', [
         {'exclude_paths': ['root']},
         {'exclude_types': [dict]},
